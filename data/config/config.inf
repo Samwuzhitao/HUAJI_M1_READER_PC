@@ -1,0 +1,22 @@
+[serial]
+port1 = COM1
+port2 = COM2
+port3 = COM3
+port4 = COM4
+
+[SN]
+date = 170717
+machine = 04
+mesh = 01
+factory = 02
+ccm = 02
+sn1 = 07100000
+sn2 = 07200000
+sn3 = 07300001
+sn4 = 07400028
+sn5 = 07500000
+sn6 = 07600006
+sn7 = 07700000
+sn8 = 07800000
+sn9 = 07900000
+
