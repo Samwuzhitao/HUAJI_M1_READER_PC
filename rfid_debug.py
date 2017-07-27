@@ -267,19 +267,21 @@ class rfid_debug(QWidget):
         button_str = self.bind_button.text()
 
         if button_str == u"关闭设备":
+            if self.tag_status == TAG_IDLE:
+                self.tag_status   = TAG_SHOW
+                self.send_cmd_max = 0
+                for item in self.sync_fg_dict:
+                    self.sync_fg_dict[item] = 0
 
-            self.tag_status   = TAG_SHOW
-            self.send_cmd_max = 0
-            for item in self.sync_fg_dict:
-                self.sync_fg_dict[item] = 0
-
-            self.clear_show_message()
-            # self.current_cmd = u'wr'
-            self.browser.append(u'=======================当前需要同步的号码如下====================')
-            for item in self.a_phone_dict:
-                self.browser.append(u" * [ %s ] : %s" % (item,self.a_phone_dict[item]))
-            self.browser.append(u'=================================================================')
-            self.timer.start(300)
+                self.clear_show_message()
+                # self.current_cmd = u'wr'
+                self.browser.append(u'=======================当前需要同步的号码如下====================')
+                for item in self.a_phone_dict:
+                    self.browser.append(u" * [ %s ] : %s" % (item,self.a_phone_dict[item]))
+                self.browser.append(u'=================================================================')
+                self.timer.start(300)
+            else:
+                self.browser.append(u'请等待数据同步完成在操作软件！')
         else:
             self.browser.append(u"请先打开设备！")
 
@@ -287,15 +289,18 @@ class rfid_debug(QWidget):
         button_str = self.bind_button.text()
 
         if button_str == u"关闭设备":
-            self.tag_status   = TAG_CHECK
-            self.send_cmd_max = 0
-            for item in self.addr_dict:
-                self.sync_fg_dict[item] = 0
+            if self.tag_status == TAG_IDLE:
+                self.tag_status   = TAG_CHECK
+                self.send_cmd_max = 0
+                for item in self.addr_dict:
+                    self.sync_fg_dict[item] = 0
 
-            self.clear_show_message()
-            self.current_cmd = u'rd'
-            self.browser.append(u'=========================当前查询的号码如下======================')
-            self.timer.start(300)
+                self.clear_show_message()
+                self.current_cmd = u'rd'
+                self.browser.append(u'=========================当前查询的号码如下======================')
+                self.timer.start(300)
+            else:
+                self.browser.append(u'请等待数据同步完成在操作软件！')
         else:
             self.browser.append(u"请先打开设备！")
 
