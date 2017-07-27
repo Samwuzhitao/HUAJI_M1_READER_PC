@@ -13,6 +13,7 @@ import logging
 import json
 import xlrd
 import xlwt
+from functools import partial
 from PyQt4.QtCore import *
 from PyQt4.QtGui  import *
 import ConfigParser
@@ -48,10 +49,12 @@ class rfid_debug(QWidget):
         self.send_cmd     = None
         self.tag_status   = TAG_IDLE
         self.send_cmd_max = 0
-        self.phone_dict   = {}
+        self.a_phone_dict = {}
+        self.d_phone_dict = {}
         self.addr_dict    = {u'爸爸':u'38',u'妈妈':u'39',u'爷爷':u'3A',
                              u'奶奶':u'3C',u'哥哥':u'3D',u'姐姐':u'3E'}
         self.sync_fg_dict = {}
+        self.current_cmd  = None
         self.current_name = None
 
         self.setWindowTitle(u"话机 RFID 标签参数配置")
@@ -61,7 +64,7 @@ class rfid_debug(QWidget):
         self.e_button      = QPushButton(u"退出")
         self.bind_button   = QPushButton(u"打开设备")
         self.sync_button   = QPushButton(u"同步数据")
-        self.clear_button  = QPushButton(u"清空显示")
+        self.clear_button  = QPushButton(u"查看数据")
 
         e_layout = QHBoxLayout()
         e_layout.addWidget(self.connect_label  )
@@ -75,24 +78,13 @@ class rfid_debug(QWidget):
         self.family_combo = QComboBox()
         self.family_combo.addItems([u'爸爸',u'妈妈',u'爷爷',u'奶奶',u'哥哥',u'姐姐'])
         self.f_phone_label=QLabel(u"电话:")
-        self.f_phone_edit = QLineEdit(u'15871492247')
+        self.f_phone_edit = QLineEdit(u'18576658098')
         self.f_phone_edit.setMaxLength(11)
         self.f_phone_button_a = QPushButton(u"添加")
         self.f_phone_button_d = QPushButton(u"移除")
 
-        self.other_label=QLabel(u"其他亲属:")
-        self.other_edit = QLineEdit(u'大姑父')
-        self.other_edit.setMaxLength(4)
-        self.o_phone_label=QLabel(u"电话:")
-        self.o_phone_edit = QLineEdit(u'15871492247')
-        self.o_phone_edit.setMaxLength(11)
-        self.o_phone_button_a = QPushButton(u"添加")
-        self.o_phone_button_d = QPushButton(u"移除")
-
         self.family_combo.setFont(QFont( "Roman times",CONF_FONT_SIZE,QFont.Bold))
         self.f_phone_edit.setFont(QFont( "Roman times",CONF_FONT_SIZE,QFont.Bold))
-        self.other_edit.setFont(QFont(   "Roman times",CONF_FONT_SIZE,QFont.Bold))
-        self.o_phone_edit.setFont(QFont( "Roman times",CONF_FONT_SIZE,QFont.Bold))
 
         g_hbox = QGridLayout()
 
@@ -102,13 +94,6 @@ class rfid_debug(QWidget):
         g_hbox.addWidget(self.f_phone_edit     ,1,4)
         g_hbox.addWidget(self.f_phone_button_a ,1,5)
         g_hbox.addWidget(self.f_phone_button_d ,1,6)
-
-        g_hbox.addWidget(self.other_label      ,2,0)
-        g_hbox.addWidget(self.other_edit       ,2,1,2,2)
-        g_hbox.addWidget(self.o_phone_label    ,2,3)
-        g_hbox.addWidget(self.o_phone_edit     ,2,4)
-        g_hbox.addWidget(self.o_phone_button_a ,2,5)
-        g_hbox.addWidget(self.o_phone_button_d ,2,6)
 
         self.browser = QTextBrowser()
 
@@ -121,77 +106,38 @@ class rfid_debug(QWidget):
 
         self.e_button.clicked.connect(self.exit)
         self.bind_button.clicked.connect(self.uart_auto_connect)
-        self.sync_button.clicked.connect(self.tag_sync_data)
-        self.clear_button.clicked.connect(self.clear_show_message)
-        self.f_phone_button_a.clicked.connect(self.f_phone_number_add)
-        self.o_phone_button_a.clicked.connect(self.o_phone_number_add)
-        self.f_phone_button_d.clicked.connect(self.f_phone_number_del)
-        self.o_phone_button_d.clicked.connect(self.o_phone_number_del)
+        self.sync_button.clicked.connect(self.tag_write_data_strat)
+        self.clear_button.clicked.connect(self.tag_read_data_strat)
+        self.f_phone_button_a.clicked.connect(partial(self.f_phone_number_add_or_del, u"添加"))
+        self.f_phone_button_d.clicked.connect(partial(self.f_phone_number_add_or_del, u"移除"))
 
         self.resize( 440, 400 )
         self.timer = QTimer()
-        self.timer.timeout.connect(self.tag_auto_sync_data)
+        self.timer.timeout.connect(self.tag_auto_rdwr_data)
 
-    def f_phone_number_del(self):
+    def f_phone_number_add_or_del(self,button_str):
         self.clear_show_message()
         name_str   = unicode(self.family_combo.currentText())
         iphone_str = str(self.f_phone_edit.text())
-        dict_len = len(self.phone_dict)
-        if dict_len > 0:
-            if self.phone_dict.has_key( name_str ) == True:
-                self.phone_dict.pop(name_str)
-                self.sync_fg_dict.pop(name_str)
-        else:
-            self.browser.append(u"已经没有号码！")
-        self.browser.append(u'=======================当前需要同步的号码如下=======================')
-        for item in self.phone_dict:
-            self.browser.append(u" * [ %s ] : %s" % (item,self.phone_dict[item]))
-        self.browser.append(u'====================================================================')
+        dict_len = len(self.a_phone_dict)
+        if button_str == u"添加":
+            if self.a_phone_dict.has_key( name_str ) == False:
+                self.a_phone_dict[name_str] = iphone_str
+            if self.d_phone_dict.has_key( name_str ) == True:
+                self.d_phone_dict.pop(name_str)
+            self.sync_fg_dict[name_str] = 0
+            self.current_cmd = u'add'
 
-    def o_phone_number_del(self):
-        self.clear_show_message()
-        name_str   = unicode(self.other_edit.text())
-        iphone_str = str(self.f_phone_edit.text())
-        dict_len = len(self.phone_dict)
-        if dict_len > 0:
-            if self.phone_dict.has_key( name_str ) == True:
-                self.phone_dict.pop(name_str)
-        else:
-            self.browser.append(u"已经没有号码！")
-        self.browser.append(u'=======================当前需要同步的号码如下====================')
-        for item in self.phone_dict:
-            self.browser.append(u" * [ %s ] : %s" % (item,self.phone_dict[item]))
-        self.browser.append(u'=================================================================')
-
-    def f_phone_number_add(self):
-        self.clear_show_message()
-        name_str   = unicode(self.family_combo.currentText())
-        iphone_str = str(self.f_phone_edit.text())
-        dict_len = len(self.phone_dict)
-        if dict_len < 6:
-            if self.phone_dict.has_key( name_str ) == False:
-                self.phone_dict[name_str]   = iphone_str
+        if button_str == u"移除":
+            if self.a_phone_dict.has_key( name_str ) == True:
+                self.d_phone_dict[name_str] = ''
+                self.a_phone_dict.pop(name_str)
                 self.sync_fg_dict[name_str] = 0
-        else:
-            self.browser.append(u"电话数超过限制！")
-        self.browser.append(u'=======================当前需要同步的号码如下====================')
-        for item in self.phone_dict:
-            self.browser.append(u" * [ %s ] : %s" % (item,self.phone_dict[item]))
-        self.browser.append(u'=================================================================')
+                self.current_cmd = u'del'
 
-    def o_phone_number_add(self):
-        self.clear_show_message()
-        name_str   = unicode(self.other_edit.text())
-        iphone_str = str(self.f_phone_edit.text())
-        dict_len = len(self.phone_dict)
-        if dict_len < 6:
-            if self.phone_dict.has_key( name_str ) == False:
-                self.phone_dict[name_str] = iphone_str
-        else:
-            self.browser.append(u"电话数超过限制！")
         self.browser.append(u'=======================当前需要同步的号码如下====================')
-        for item in self.phone_dict:
-            self.browser.append(u" * [ %s ] : %s" % (item,self.phone_dict[item]))
+        for item in self.a_phone_dict:
+            self.browser.append(u" * [ %s ] : %s" % (item,self.a_phone_dict[item]))
         self.browser.append(u'=================================================================')
 
     def clear_show_message(self):
@@ -221,11 +167,14 @@ class rfid_debug(QWidget):
     def phone_number_to_hex(self,phone):
         data = ""
         i = 0
+        if len(phone) % 2 != 0:
+            phone = phone + 'F'
+
         data_len = len( phone )
         for item in phone:
             if i <= data_len - 2:
-                hex_h = (string.atoi(phone[i],10)<<4) & 0xF0
-                hex_l = (string.atoi(phone[i+1],10) & 0x0F)
+                hex_h = (string.atoi(phone[i],16)<<4) & 0xF0
+                hex_l = (string.atoi(phone[i+1],16) & 0x0F)
                 data += "%02X"  % (hex_h | hex_l)
                 i = i + 2
         print 'phone_to_hex: %s ' % data
@@ -252,26 +201,33 @@ class rfid_debug(QWidget):
         sign_str = "FFFFFFFF"
         len_str  = "11 "
         addr_str = self.addr_dict[name] #"05 "
-        data     = self.name_to_hex(name) + '00000000 ' + self.phone_number_to_hex(phone+'0') + '0000 '
+        name_str = self.name_to_hex(name)
+        phone_str = self.phone_number_to_hex(phone)
+        data     = name_str + 'F'*(16-len(name_str)) + phone_str + 'F'*(16-len(phone_str))
         crc_str  = cmd_str + sign_str + len_str + addr_str + ' ' + data
         crc      = self.get_cmd_crc(crc_str)
         cmd      = '5C' + crc_str + crc + 'CA'
         # print cmd
         return cmd
 
-    def tag_auto_sync_data(self):
-        # name = u'爸爸'
+    def tag_auto_rdwr_data(self):
         if self.current_name == None:
             for item in self.sync_fg_dict:
                 if self.sync_fg_dict[item] == 0:
                     self.current_name = item
+        print self.current_name
 
         if self.current_name == None:
             self.tag_status = TAG_IDLE
-            self.browser.append(u"同步所有参数完成")
             self.browser.append(u'=================================================================')
-            self.timer.stop()
+            self.browser.append(u"所有数据同步完成！")
+            self.browser.append(u'=================================================================')
 
+            for item in self.sync_fg_dict:
+                self.sync_fg_dict[item] = 0
+            # self.a_phone_dict   = {}
+            self.sync_fg_dict = {}
+            self.timer.stop()
         else:
             cmd = None
             if self.tag_status == TAG_SHOW or self.tag_status == TAG_CHECK:
@@ -286,7 +242,11 @@ class rfid_debug(QWidget):
                 cmd      = '5C' + crc_str + crc + 'CA'
 
             if self.tag_status == TAG_SET:
-                cmd = self.get_set_tag_cmd(self.current_name,self.phone_dict[self.current_name])
+                if self.a_phone_dict[self.current_name] != '':
+                    cmd = self.get_set_tag_cmd(self.current_name,self.a_phone_dict[self.current_name])
+                else:
+                    self.tag_status == TAG_CLEAR
+
 
             if self.tag_status == TAG_CLEAR:
                 # [4].清数据指令
@@ -298,29 +258,46 @@ class rfid_debug(QWidget):
                 crc_str  = cmd_str + sign_str + len_str + addr_str + ' '
                 crc      = self.get_cmd_crc(crc_str)
                 cmd      = '5C' + crc_str + crc + 'CA'
-
+            # return cmd
             if cmd:
                 self.uart_send_data(cmd)
-                self.browser.append(u"[STATUS = %d] CMD: %s" % (self.tag_status,cmd))
+                # self.browser.append(u"[STATUS = %d] CMD: %s" % (self.tag_status,cmd))
 
-    def tag_sync_data(self):
+    def tag_write_data_strat(self):
         button_str = self.bind_button.text()
 
         if button_str == u"关闭设备":
+
             self.tag_status   = TAG_SHOW
             self.send_cmd_max = 0
             for item in self.sync_fg_dict:
                 self.sync_fg_dict[item] = 0
 
             self.clear_show_message()
+            # self.current_cmd = u'wr'
             self.browser.append(u'=======================当前需要同步的号码如下====================')
-            for item in self.phone_dict:
-                self.browser.append(u" * [ %s ] : %s" % (item,self.phone_dict[item]))
+            for item in self.a_phone_dict:
+                self.browser.append(u" * [ %s ] : %s" % (item,self.a_phone_dict[item]))
             self.browser.append(u'=================================================================')
             self.timer.start(300)
         else:
             self.browser.append(u"请先打开设备！")
 
+    def tag_read_data_strat(self):
+        button_str = self.bind_button.text()
+
+        if button_str == u"关闭设备":
+            self.tag_status   = TAG_CHECK
+            self.send_cmd_max = 0
+            for item in self.addr_dict:
+                self.sync_fg_dict[item] = 0
+
+            self.clear_show_message()
+            self.current_cmd = u'rd'
+            self.browser.append(u'=========================当前查询的号码如下======================')
+            self.timer.start(300)
+        else:
+            self.browser.append(u"请先打开设备！")
 
     def uart_auto_connect(self):
         connect_cmd = "5C 40 00 F0 F0 00 00 40 CA"
@@ -389,68 +366,137 @@ class rfid_debug(QWidget):
         log_str = u"[%s]: %s" % (port,data)
         result_str = ''
         print log_str,
+        if self.current_cmd == u'add':
+            if data[2:4] == '11':
+                if len(data) == len("5C11000F0F0002040017CA"):
+                    self.send_cmd_max = self.send_cmd_max + 1
+                    if self.send_cmd_max >= 5:
+                        result_str = u"NO TAG"
+                        self.tag_status = TAG_IDLE
+                else:
+                    if self.tag_status == TAG_SHOW:
+                        if data[16:48] == '0'*32:
+                            self.tag_status = TAG_SET
+                        else:
+                            self.tag_status = TAG_CLEAR
+                    if self.tag_status == TAG_CHECK:
+                        if data[16:48] == '0'*32:
+                            self.tag_status = TAG_SET
+                        else:
+                            # self.tag_status = TAG_IDLE
+                            phone = data[32:32+11]
+                            real_phone = ''
+                            for item in phone:
+                                if item != 'F':
+                                    real_phone = real_phone + item
+                            result_str = u' * [ %s ] : 同步数据成功：%s' % (self.current_name,real_phone)
+                            self.sync_fg_dict[self.current_name] = 1
+                            self.tag_status   = TAG_SHOW
+                            self.send_cmd_max = 0
+                            self.current_name = None
 
-        if data[2:4] == '11':
-            if len(data) == len("5C11000F0F0002040017CA"):
-                self.send_cmd_max = self.send_cmd_max + 1
-                if self.send_cmd_max >= 5:
-                    result_str = u"NO TAG"
+            if data[2:4] == '10':
+                if data[14:16] == '01':
+                    self.tag_status = TAG_CHECK
+                    self.send_cmd_max = 0
+
+                if data[14:16] == '02':
                     self.tag_status = TAG_IDLE
-            else:
-                if self.tag_status == TAG_SHOW:
-                    if data[16:48] == '0'*32:
-                        self.tag_status = TAG_SET
-                    else:
-                        self.tag_status = TAG_CLEAR
-                if self.tag_status == TAG_CHECK:
-                    if data[16:48] == '0'*32:
-                        self.tag_status = TAG_SET
-                    else:
-                        # self.tag_status = TAG_IDLE
-                        result_str = u'[%s]: 同步参数成功' % self.current_name
-                        self.sync_fg_dict[self.current_name] = 1
+                    self.send_cmd_max = 0
+                    result_str = u'此区域已经写过数据'
+
+                if data[14:16] == '00':
+                    self.send_cmd_max = self.send_cmd_max + 1
+                    if self.send_cmd_max >= 5:
+                        result_str = u' * [ %s ] : 同步数据失败' % self.current_name
+                        self.current_name = None
                         self.tag_status   = TAG_SHOW
                         self.send_cmd_max = 0
+
+            if data[2:4] == '12':
+                if data[14:16] == '01':
+                    self.tag_status = TAG_CHECK
+                    self.send_cmd_max = 0
+                else:
+                    self.send_cmd_max = self.send_cmd_max + 1
+                    if self.send_cmd_max >= 5:
+                        result_str = u' * [ %s ] : 同步数据失败' % self.current_name
+                        # self.tag_status = TAG_IDLE
                         self.current_name = None
+                        self.tag_status   = TAG_SHOW
+                        self.send_cmd_max = 0
 
-        if data[2:4] == '10':
-            if data[14:16] == '01':
-                self.tag_status = TAG_CHECK
-                self.send_cmd_max = 0
+        if self.current_cmd == u'del':
+            if data[2:4] == '11':
+                if len(data) == len("5C11000F0F0002040017CA"):
+                    self.send_cmd_max = self.send_cmd_max + 1
+                    if self.send_cmd_max >= 5:
+                        result_str = u"NO TAG"
+                        self.tag_status = TAG_IDLE
+                else:
+                    if self.tag_status == TAG_SHOW:
+                        if data[16:48] == '0'*32:
+                            self.tag_status = TAG_SET
+                        else:
+                            self.tag_status = TAG_CLEAR
+                    if self.tag_status == TAG_CHECK:
+                        if data[16:48] == '0'*32:
+                            self.sync_fg_dict[self.current_name] = 1
+                            self.tag_status   = TAG_CHECK
+                            self.send_cmd_max = 0
+                            result_str = u' * [ %s ] : 清除数据成功！' % (self.current_name)
+                            self.current_name = None
+                        else:
+                            self.tag_status   = TAG_CLEAR
 
-            if data[14:16] == '02':
-                self.tag_status = TAG_IDLE
-                self.send_cmd_max = 0
-                result_str = u'此区域已经写过数据'
-
-            if data[14:16] == '00':
-                self.send_cmd_max = self.send_cmd_max + 1
-                if self.send_cmd_max >= 5:
-                    result_str = u'[%s]: 同步参数失败' % self.current_name
-                    self.current_name = None
-                    self.tag_status   = TAG_SHOW
+            if data[2:4] == '12':
+                if data[14:16] == '01':
+                    self.tag_status = TAG_CHECK
                     self.send_cmd_max = 0
+                else:
+                    self.send_cmd_max = self.send_cmd_max + 1
+                    if self.send_cmd_max >= 5:
+                        result_str = u' * [ %s ] : 同步数据失败' % self.current_name
+                        result_str = u"NO TAG"
+                        self.tag_status = TAG_IDLE
 
-        if data[2:4] == '12':
-            if data[14:16] == '01':
-                self.tag_status = TAG_CHECK
-                self.send_cmd_max = 0
-            else:
-                self.send_cmd_max = self.send_cmd_max + 1
-                if self.send_cmd_max >= 5:
-                    result_str = u'[%s]: 同步参数失败' % self.current_name
-                    # self.tag_status = TAG_IDLE
-                    self.current_name = None
-                    self.tag_status   = TAG_SHOW
-                    self.send_cmd_max = 0
+        if self.current_cmd == u'rd':
+            if data[2:4] == '11':
+                if len(data) == len("5C11000F0F0002040017CA"):
+                    self.send_cmd_max = self.send_cmd_max + 1
+                    if self.send_cmd_max >= 5:
+                        result_str = u"NO TAG"
+                        self.tag_status = TAG_IDLE
+                else:
+                    if self.tag_status == TAG_CHECK:
+                        if data[16:48] == '0'*32 :
+                            self.tag_status = TAG_CHECK
+                            self.send_cmd_max = self.send_cmd_max + 1
+                            if self.send_cmd_max >= 2:
+                                result_str = u' * [ %s ] : 读取数据成功: NONE' % self.current_name
+                                self.sync_fg_dict[self.current_name] = 1
+                                self.send_cmd_max = 0
+                                self.current_name = None
+                        else:
+                            # self.tag_status = TAG_IDLE
+                            phone = data[32:32+11]
+                            real_phone = ''
+                            for item in phone:
+                                if item != 'F':
+                                    real_phone = real_phone + item
+                            result_str = u' * [ %s ] : 读取数据成功：%s' % (self.current_name,real_phone)
+                            self.a_phone_dict[self.current_name]   = real_phone
 
+                            self.sync_fg_dict[self.current_name] = 1
+                            self.tag_status   = TAG_CHECK
+                            self.send_cmd_max = 0
+                            self.current_name = None
         # 解析读取UID指令对应的返回
         print result_str
         logging.debug( u"%s %s" % (log_str, result_str) )
-        self.browser.append(u"%s" % (log_str))
+        # self.browser.append(u"%s" % (log_str))
         if result_str:
             self.browser.append(u"%s" % result_str)
-            self.browser.append(u'=================================================================')
 
     def exit(self):
         print "exit"
