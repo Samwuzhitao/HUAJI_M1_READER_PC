@@ -74,12 +74,12 @@ class rfid_debug(QWidget):
         e_layout.addWidget(self.clear_button   )
         e_layout.addWidget(self.e_button       )
 
-        self.family_label=QLabel(u"直系亲属:")
+        self.family_label=QLabel(u"亲属:")
         self.family_combo = QComboBox()
         self.family_combo.addItems([u'爸爸',u'妈妈',u'爷爷',u'奶奶',u'哥哥',u'姐姐'])
         self.f_phone_label=QLabel(u"电话:")
         self.f_phone_edit = QLineEdit(u'18576658098')
-        self.f_phone_edit.setMaxLength(11)
+        self.f_phone_edit.setMaxLength(15)
         self.f_phone_button_a = QPushButton(u"添加")
         self.f_phone_button_d = QPushButton(u"移除")
 
@@ -111,7 +111,7 @@ class rfid_debug(QWidget):
         self.f_phone_button_a.clicked.connect(partial(self.f_phone_number_add_or_del, u"添加"))
         self.f_phone_button_d.clicked.connect(partial(self.f_phone_number_add_or_del, u"移除"))
 
-        self.resize( 440, 400 )
+        self.resize( 450, 400 )
         self.timer = QTimer()
         self.timer.timeout.connect(self.tag_auto_rdwr_data)
 
@@ -389,7 +389,7 @@ class rfid_debug(QWidget):
                             self.tag_status = TAG_SET
                         else:
                             # self.tag_status = TAG_IDLE
-                            phone = data[32:32+11]
+                            phone = data[32:32+15]
                             real_phone = ''
                             for item in phone:
                                 if item != 'F':
@@ -484,7 +484,7 @@ class rfid_debug(QWidget):
                                 self.current_name = None
                         else:
                             # self.tag_status = TAG_IDLE
-                            phone = data[32:32+11]
+                            phone = data[32:32+15]
                             real_phone = ''
                             for item in phone:
                                 if item != 'F':
