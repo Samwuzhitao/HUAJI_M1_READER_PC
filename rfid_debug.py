@@ -111,7 +111,7 @@ class rfid_debug(QWidget):
         self.f_phone_button_a.clicked.connect(partial(self.f_phone_number_add_or_del, u"添加"))
         self.f_phone_button_d.clicked.connect(partial(self.f_phone_number_add_or_del, u"移除"))
 
-        self.resize( 450, 400 )
+        self.resize( 440, 400 )
         self.timer = QTimer()
         self.timer.timeout.connect(self.tag_auto_rdwr_data)
 
@@ -215,53 +215,63 @@ class rfid_debug(QWidget):
             for item in self.sync_fg_dict:
                 if self.sync_fg_dict[item] == 0:
                     self.current_name = item
-        print self.current_name
+        # print self.current_name
 
-        if self.current_name == None:
-            self.tag_status = TAG_IDLE
+        if self.tag_status == TAG_IDLE:
             self.browser.append(u'=================================================================')
-            self.browser.append(u"所有数据同步完成！")
+            self.browser.append(u"退出操作！")
             self.browser.append(u'=================================================================')
 
             for item in self.sync_fg_dict:
                 self.sync_fg_dict[item] = 0
-            # self.a_phone_dict   = {}
             self.sync_fg_dict = {}
             self.timer.stop()
         else:
-            cmd = None
-            if self.tag_status == TAG_SHOW or self.tag_status == TAG_CHECK:
-                # [3].读数据指令
-                # cmd = "5C 11 00 0F 0F 00 01 04 14 CA"
-                cmd_str  = "11"
-                sign_str = "000F0F00"
-                len_str  = "01 "
-                addr_str = self.addr_dict[self.current_name] #"05 "
-                crc_str  = cmd_str + sign_str + len_str + addr_str + ' '
-                crc      = self.get_cmd_crc(crc_str)
-                cmd      = '5C' + crc_str + crc + 'CA'
+            if self.current_name == None:
+                self.tag_status = TAG_IDLE
+                self.browser.append(u'=================================================================')
+                self.browser.append(u"所有数据同步完成！")
+                self.browser.append(u'=================================================================')
 
-            if self.tag_status == TAG_SET:
-                if self.a_phone_dict[self.current_name] != '':
-                    cmd = self.get_set_tag_cmd(self.current_name,self.a_phone_dict[self.current_name])
-                else:
-                    self.tag_status == TAG_CLEAR
+                for item in self.sync_fg_dict:
+                    self.sync_fg_dict[item] = 0
+                # self.a_phone_dict   = {}
+                self.sync_fg_dict = {}
+                self.timer.stop()
+            else:
+                cmd = None
+                if self.tag_status == TAG_SHOW or self.tag_status == TAG_CHECK:
+                    # [3].读数据指令
+                    # cmd = "5C 11 00 0F 0F 00 01 04 14 CA"
+                    cmd_str  = "11"
+                    sign_str = "000F0F00"
+                    len_str  = "01 "
+                    addr_str = self.addr_dict[self.current_name] #"05 "
+                    crc_str  = cmd_str + sign_str + len_str + addr_str + ' '
+                    crc      = self.get_cmd_crc(crc_str)
+                    cmd      = '5C' + crc_str + crc + 'CA'
+
+                if self.tag_status == TAG_SET:
+                    if self.a_phone_dict[self.current_name] != '':
+                        cmd = self.get_set_tag_cmd(self.current_name,self.a_phone_dict[self.current_name])
+                    else:
+                        self.tag_status == TAG_CLEAR
 
 
-            if self.tag_status == TAG_CLEAR:
-                # [4].清数据指令
-                # cmd = "5C 12 00 0F 0F 00 01 04 17 CA"
-                cmd_str  = "12"
-                sign_str = "000F0F0F"
-                len_str  = "01 "
-                addr_str = self.addr_dict[self.current_name] #"05 "
-                crc_str  = cmd_str + sign_str + len_str + addr_str + ' '
-                crc      = self.get_cmd_crc(crc_str)
-                cmd      = '5C' + crc_str + crc + 'CA'
-            # return cmd
-            if cmd:
-                self.uart_send_data(cmd)
-                # self.browser.append(u"[STATUS = %d] CMD: %s" % (self.tag_status,cmd))
+                if self.tag_status == TAG_CLEAR:
+                    # [4].清数据指令
+                    # cmd = "5C 12 00 0F 0F 00 01 04 17 CA"
+                    cmd_str  = "12"
+                    sign_str = "000F0F0F"
+                    len_str  = "01 "
+                    addr_str = self.addr_dict[self.current_name] #"05 "
+                    crc_str  = cmd_str + sign_str + len_str + addr_str + ' '
+                    crc      = self.get_cmd_crc(crc_str)
+                    cmd      = '5C' + crc_str + crc + 'CA'
+                # return cmd
+                if cmd:
+                    self.uart_send_data(cmd)
+                    # self.browser.append(u"[STATUS = %d] CMD: %s" % (self.tag_status,cmd))
 
     def tag_write_data_strat(self):
         button_str = self.bind_button.text()
@@ -379,9 +389,13 @@ class rfid_debug(QWidget):
         if self.current_cmd == u'add':
             if data[2:4] == '11':
                 if len(data) == len("5C11000F0F0002040017CA"):
-                    self.send_cmd_max = self.send_cmd_max + 1
-                    if self.send_cmd_max >= 5:
-                        result_str = u"NO TAG"
+                    if data[16:18] == '00':
+                        self.send_cmd_max = self.send_cmd_max + 1
+                        if self.send_cmd_max >= 3:
+                            result_str = u"NO TAG"
+                            self.tag_status = TAG_IDLE
+                    if data[16:18] == '03':
+                        result_str = u"ERROR TAG"
                         self.tag_status = TAG_IDLE
                 else:
                     if self.tag_status == TAG_SHOW:
@@ -417,7 +431,7 @@ class rfid_debug(QWidget):
 
                 if data[14:16] == '00':
                     self.send_cmd_max = self.send_cmd_max + 1
-                    if self.send_cmd_max >= 5:
+                    if self.send_cmd_max >= 3:
                         result_str = u' * [ %s ] : 同步数据失败' % self.current_name
                         self.current_name = None
                         self.tag_status   = TAG_SHOW
@@ -429,7 +443,7 @@ class rfid_debug(QWidget):
                     self.send_cmd_max = 0
                 else:
                     self.send_cmd_max = self.send_cmd_max + 1
-                    if self.send_cmd_max >= 5:
+                    if self.send_cmd_max >= 3:
                         result_str = u' * [ %s ] : 同步数据失败' % self.current_name
                         # self.tag_status = TAG_IDLE
                         self.current_name = None
@@ -439,9 +453,13 @@ class rfid_debug(QWidget):
         if self.current_cmd == u'del':
             if data[2:4] == '11':
                 if len(data) == len("5C11000F0F0002040017CA"):
-                    self.send_cmd_max = self.send_cmd_max + 1
-                    if self.send_cmd_max >= 5:
-                        result_str = u"NO TAG"
+                    if data[16:18] == '00':
+                        self.send_cmd_max = self.send_cmd_max + 1
+                        if self.send_cmd_max >= 3:
+                            result_str = u"NO TAG"
+                            self.tag_status = TAG_IDLE
+                    if data[16:18] == '03':
+                        result_str = u"ERROR TAG"
                         self.tag_status = TAG_IDLE
                 else:
                     if self.tag_status == TAG_SHOW:
@@ -465,7 +483,7 @@ class rfid_debug(QWidget):
                     self.send_cmd_max = 0
                 else:
                     self.send_cmd_max = self.send_cmd_max + 1
-                    if self.send_cmd_max >= 5:
+                    if self.send_cmd_max >= 3:
                         result_str = u' * [ %s ] : 同步数据失败' % self.current_name
                         result_str = u"NO TAG"
                         self.tag_status = TAG_IDLE
@@ -474,7 +492,7 @@ class rfid_debug(QWidget):
             if data[2:4] == '11':
                 if len(data) == len("5C11000F0F0002040017CA"):
                     self.send_cmd_max = self.send_cmd_max + 1
-                    if self.send_cmd_max >= 5:
+                    if self.send_cmd_max >= 3:
                         result_str = u"NO TAG"
                         self.tag_status = TAG_IDLE
                 else:
