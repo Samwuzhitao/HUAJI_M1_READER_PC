@@ -215,7 +215,6 @@ class rfid_debug(QWidget):
             for item in self.sync_fg_dict:
                 if self.sync_fg_dict[item] == 0:
                     self.current_name = item
-        # print self.current_name
 
         if self.tag_status == TAG_IDLE:
             self.browser.append(u'=================================================================')
@@ -300,6 +299,7 @@ class rfid_debug(QWidget):
 
         if button_str == u"关闭设备":
             if self.tag_status == TAG_IDLE:
+                self.a_phone_dict = {}
                 self.tag_status   = TAG_CHECK
                 self.send_cmd_max = 0
                 for item in self.addr_dict:
