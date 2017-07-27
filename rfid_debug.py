@@ -319,25 +319,31 @@ class rfid_debug(QWidget):
                     s.close()
                 except serial.SerialException:
                     pass
-            print "SEARCH COM LIST: ",
-            print ser_list
+            # print "SEARCH COM LIST: ",
 
+            self.browser.append(u"SEARCH COM LIST: ")
+            for item in ser_list:
+                self.browser.append(" * %s " % item)
+            self.browser.append(u'=================================================================')
             # 发送链接指令
             for item in ser_list:
+                # self.browser.append(u' * [ %s ] SEND CMD' % item)
                 try:
-                    ser = serial.Serial( ports_dict[item], 115200, timeout = 0.5)
+                    ser = serial.Serial( ports_dict[item], 115200, timeout = 0.2)
                 except serial.SerialException:
                     pass
 
                 if ser:
                     if ser.isOpen() == True:
                         ser.write( connect_cmd )
-                        cmd_result = ser.read(39)
+                        cmd_result = ser.readall()
+                        # self.browser.append(u'REV  CMD: %s' % cmd_result)
                         print cmd_result
                         if cmd_result != None and cmd_result != '':
                             for i in cmd_result:
                                 cmd_str = hex_decode.r_machine(i)
                             print cmd_str
+                            # self.browser.append(u' * [ %s ] REV  CMD: %s' % (item,cmd_str))
                             if cmd_str:
                                 ser.close()
                                 ser = serial.Serial( ports_dict[item], 115200)
@@ -349,9 +355,8 @@ class rfid_debug(QWidget):
                                 self.com_monitor.start()
                                 self.browser.append(u"打开串口: %s" % (item))
                                 return item
-                        else:
-                            self.browser.append(u"打开串口失败")
-                            return 0
+            self.browser.append(u"打开串口失败")
+            return 0
 
         if button_str == u"关闭设备":
             self.led1.set_color("gray")
