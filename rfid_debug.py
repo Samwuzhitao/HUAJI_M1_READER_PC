@@ -59,20 +59,35 @@ class rfid_debug(QWidget):
 
         self.setWindowTitle(u"话机 RFID 标签参数配置")
 
-        self.connect_label = QLabel(u"连接状态:")
+        self.connect_label = QLabel(u"连接:")
+        self.connect_label.setFixedWidth(30)
+        self.connect_label.setFixedHeight(30)
         self.led1          = LED(30)
         self.e_button      = QPushButton(u"退出")
         self.bind_button   = QPushButton(u"打开设备")
-        self.sync_button   = QPushButton(u"同步数据")
+        self.read_id_button= QPushButton(u"读取卡号")
+        self.id_edit       = QLineEdit()
+        self.id_label      = QLabel(u"卡号:")
+        self.sync_button   = QPushButton(u"写入数据")
         self.clear_button  = QPushButton(u"查看数据")
 
-        e_layout = QHBoxLayout()
-        e_layout.addWidget(self.connect_label  )
-        e_layout.addWidget(self.led1           )
-        e_layout.addWidget(self.bind_button    )
-        e_layout.addWidget(self.sync_button    )
-        e_layout.addWidget(self.clear_button   )
-        e_layout.addWidget(self.e_button       )
+        e_layout = QGridLayout()
+        e_layout.addWidget(self.connect_label,1,0)
+        e_layout.addWidget(self.led1         ,1,1)
+
+        m_layout = QHBoxLayout()
+        m_layout.addLayout(e_layout)
+        m_layout.addWidget(self.bind_button    )
+        m_layout.addWidget(self.e_button       )
+
+        b_layout = QHBoxLayout()
+        b_layout.addWidget(self.id_label       )
+        b_layout.addWidget(self.id_edit        )
+        b_layout.addWidget(self.read_id_button )
+
+        c_layout = QHBoxLayout()
+        c_layout.addWidget(self.clear_button   )
+        c_layout.addWidget(self.sync_button    )
 
         self.family_label=QLabel(u"亲属:")
         self.family_combo = QComboBox()
@@ -85,9 +100,9 @@ class rfid_debug(QWidget):
 
         self.family_combo.setFont(QFont( "Roman times",CONF_FONT_SIZE,QFont.Bold))
         self.f_phone_edit.setFont(QFont( "Roman times",CONF_FONT_SIZE,QFont.Bold))
+        self.id_edit.setFont(QFont( "Roman times",CONF_FONT_SIZE,QFont.Bold))
 
         g_hbox = QGridLayout()
-
         g_hbox.addWidget(self.family_label     ,1,0)
         g_hbox.addWidget(self.family_combo     ,1,1,1,2)
         g_hbox.addWidget(self.f_phone_label    ,1,3)
@@ -98,8 +113,10 @@ class rfid_debug(QWidget):
         self.browser = QTextBrowser()
 
         box = QVBoxLayout()
-        box.addLayout(e_layout)
+        box.addLayout(m_layout)
+        box.addLayout(b_layout)
         box.addLayout(g_hbox)
+        box.addLayout(c_layout)
         box.addWidget(self.browser)
 
         self.setLayout(box)
@@ -108,12 +125,25 @@ class rfid_debug(QWidget):
         self.bind_button.clicked.connect(self.uart_auto_connect)
         self.sync_button.clicked.connect(self.tag_write_data_strat)
         self.clear_button.clicked.connect(self.tag_read_data_strat)
+        self.read_id_button.clicked.connect(self.read_id)
         self.f_phone_button_a.clicked.connect(partial(self.f_phone_number_add_or_del, u"添加"))
         self.f_phone_button_d.clicked.connect(partial(self.f_phone_number_add_or_del, u"移除"))
 
         self.resize( 440, 400 )
         self.timer = QTimer()
         self.timer.timeout.connect(self.tag_auto_rdwr_data)
+
+    def read_id(self):
+        button_str = self.bind_button.text()
+        if button_str == u"关闭设备":
+            if self.tag_status == TAG_IDLE:
+                self.current_cmd = u'id'
+                self.uart_send_data("5C 13 00 0F 0F 00 00 13 CA")
+            else:
+                self.browser.append(u'请等待数据同步完成在操作软件！')
+        else:
+            self.browser.append(u"请先打开设备！")
+
 
     def f_phone_number_add_or_del(self,button_str):
         self.clear_show_message()
@@ -220,6 +250,7 @@ class rfid_debug(QWidget):
             self.browser.append(u'=================================================================')
             self.browser.append(u"退出操作！")
             self.browser.append(u'=================================================================')
+            self.uart_send_data("5C 30 00 0F 0F 00 01 03 32 CA")
 
             for item in self.sync_fg_dict:
                 self.sync_fg_dict[item] = 0
@@ -231,6 +262,7 @@ class rfid_debug(QWidget):
                 self.browser.append(u'=================================================================')
                 self.browser.append(u"所有数据同步完成！")
                 self.browser.append(u'=================================================================')
+                self.uart_send_data("5C 30 00 0F 0F 00 01 01 30 CA")
 
                 for item in self.sync_fg_dict:
                     self.sync_fg_dict[item] = 0
@@ -255,7 +287,6 @@ class rfid_debug(QWidget):
                         cmd = self.get_set_tag_cmd(self.current_name,self.a_phone_dict[self.current_name])
                     else:
                         self.tag_status == TAG_CLEAR
-
 
                 if self.tag_status == TAG_CLEAR:
                     # [4].清数据指令
@@ -288,7 +319,7 @@ class rfid_debug(QWidget):
                 for item in self.a_phone_dict:
                     self.browser.append(u" * [ %s ] : %s" % (item,self.a_phone_dict[item]))
                 self.browser.append(u'=================================================================')
-                self.timer.start(300)
+                self.timer.start(500)
             else:
                 self.browser.append(u'请等待数据同步完成在操作软件！')
         else:
@@ -308,7 +339,7 @@ class rfid_debug(QWidget):
                 self.clear_show_message()
                 self.current_cmd = u'rd'
                 self.browser.append(u'=========================当前查询的号码如下======================')
-                self.timer.start(300)
+                self.timer.start(500)
             else:
                 self.browser.append(u'请等待数据同步完成在操作软件！')
         else:
@@ -386,6 +417,17 @@ class rfid_debug(QWidget):
         log_str = u"[%s]: %s" % (port,data)
         result_str = ''
         print log_str,
+        if self.current_cmd == u'id':
+            if data[2:4] == '13':
+                device_id = data[14:14+8]
+                device_id = device_id[6:8] + device_id[4:6] + device_id[2:4] + device_id[0:2]
+                device_id = string.atoi(device_id,16)
+                if device_id == 0:
+                    self.id_edit.setText(u"NO TAG" )
+                else:
+                    self.uart_send_data("5C 30 00 0F 0F 00 01 01 30 CA")
+                    self.id_edit.setText(u"%010u" %device_id )
+
         if self.current_cmd == u'add':
             if data[2:4] == '11':
                 if len(data) == len("5C11000F0F0002040017CA"):
