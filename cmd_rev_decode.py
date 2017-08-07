@@ -18,6 +18,7 @@ R_STATUS_END    = 6
 class HexDecode():
     def __init__(self):
         self.init()
+        self.print_hook = None
         self.cmd_m   = {
             R_STATUS_HEADER : self.r_header ,
             R_STATUS_CMD    : self.r_cmd    ,
@@ -153,10 +154,14 @@ class HexDecode():
         print "end    = %s" % self.end
         # self.clear()
 
+    def register_print_hook(self,fun):
+        self.print_hook = fun
+
     def r_machine(self,x):
         if x:
             char = "%02X" % ord(x)
-            # print "status = %d, char = %s" % (self.status, char )
+            # if self.print_hook:
+            #     self.print_hook("status = %d, char = %s" % (self.status, char ))
             cmd_str = self.cmd_m[self.status](char)
             # print cmd_str
             return cmd_str

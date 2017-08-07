@@ -57,7 +57,7 @@ class rfid_debug(QWidget):
         self.current_cmd  = None
         self.current_name = None
 
-        self.setWindowTitle(u"话机 RFID 标签参数配置")
+        self.setWindowTitle(u"话机 RFID 标签参数配置 V1.3")
 
         self.connect_label = QLabel(u"连接:")
         self.connect_label.setFixedWidth(30)
@@ -350,6 +350,7 @@ class rfid_debug(QWidget):
         connect_cmd = str(connect_cmd.replace(' ',''))
         connect_cmd = connect_cmd.decode("hex")
         hex_decode  = HexDecode()
+        hex_decode.register_print_hook(self.browser.append)
         ser         = None
         ser_list    = []
         ports_dict  = {}
@@ -373,24 +374,23 @@ class rfid_debug(QWidget):
             self.browser.append(u'=================================================================')
             # 发送链接指令
             for item in ser_list:
-                # self.browser.append(u' * [ %s ] SEND CMD' % item)
+                self.browser.append(u' * [ %-5s ] TRY CONNECT ...' % item)
                 try:
-                    ser = serial.Serial( ports_dict[item], 115200, timeout = 0.2)
+                    ser = serial.Serial( ports_dict[item], 115200, timeout = 0.5)
                 except serial.SerialException:
                     pass
 
                 if ser:
                     if ser.isOpen() == True:
+                        self.browser.append(u' * [ %-5s ] SEND CMD ...' % item)
                         ser.write( connect_cmd )
                         cmd_result = ser.readall()
-                        # self.browser.append(u'REV  CMD: %s' % cmd_result)
-                        print cmd_result
                         if cmd_result != None and cmd_result != '':
                             for i in cmd_result:
                                 cmd_str = hex_decode.r_machine(i)
-                            print cmd_str
-                            # self.browser.append(u' * [ %s ] REV  CMD: %s' % (item,cmd_str))
-                            if cmd_str:
+                            # print '* [ %s ] REV  CMD: %s' % (item,cmd_str)
+                            # self.browser.append(u' * [ %-5s ] CONNECT OK : %s' % (item,cmd_str))
+                            if cmd_str and len(cmd_str) == 78:
                                 ser.close()
                                 ser = serial.Serial( ports_dict[item], 115200)
                                 self.bind_button.setText(u"关闭设备")
@@ -399,9 +399,14 @@ class rfid_debug(QWidget):
                                 self.connect(self.com_monitor,SIGNAL('r_cmd_message(QString, QString)'),
                                     self.uart_update_text)
                                 self.com_monitor.start()
-                                self.browser.append(u"打开串口: %s" % (item))
+                                self.browser.append(u"打开设备: %s 成功！" % (item))
                                 return item
-            self.browser.append(u"打开串口失败")
+                            else:
+                                self.browser.append(u" * [ %-5s ] OTEHR DEVICE !" % (item))
+                                hex_decode.init()
+                        else:
+                            self.browser.append(u" * [ %-5s ] NO RETUEN !" % (item))
+            self.browser.append(u"打开设备失败")
             return 0
 
         if button_str == u"关闭设备":
